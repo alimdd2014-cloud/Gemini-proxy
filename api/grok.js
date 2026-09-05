@@ -1,7 +1,6 @@
 export const maxDuration = 30;
 
 export default async function handler(req, res) {
-  // قراءة وتنظيف المفاتيح
   const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
   const keys = rawKeys
     .split(',')
@@ -13,20 +12,6 @@ export default async function handler(req, res) {
   }
 
   const selectedKey = keys[Math.floor(Math.random() * keys.length)];
-
-  // إمكانية عرض قائمة النماذج المتاحة بفتح الرابط من المتصفح مباشرة
-  if (req.method === 'GET') {
-    try {
-      const checkRes = await fetch('https://api.groq.com/openai/v1/models', {
-        headers: { 'Authorization': `Bearer ${selectedKey}` }
-      });
-      const data = await checkRes.json();
-      const activeIds = (data.data || []).map(m => m.id);
-      return res.status(200).json({ available_models: activeIds });
-    } catch (e) {
-      return res.status(500).send(e.message);
-    }
-  }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -40,7 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. جلب النماذج النشطة في الحساب فوراً
+    // 1. استعلام النماذج النشطة في الحساب فوراً
     const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { 'Authorization': `Bearer ${selectedKey}` }
     });
@@ -50,7 +35,6 @@ export default async function handler(req, res) {
 
     if (modelsData.data) {
       const activeList = modelsData.data.map(m => m.id);
-      // استبعاد النماذج الموقوفة أو المقيدة أو الصوتية
       const validModels = activeList.filter(id => {
         const lower = id.toLowerCase();
         return !lower.includes('whisper') &&
@@ -62,14 +46,13 @@ export default async function handler(req, res) {
                !lower.includes('mixtral');
       });
 
-      // تفضيل نماذج Qwen الحديثة
       targetModel = validModels.find(id => id.includes('qwen-32b') || id.includes('qwen')) ||
                     validModels.find(id => id.includes('llama-3.3') || id.includes('llama-3.1')) ||
                     validModels[0] ||
                     targetModel;
     }
 
-    // 2. إرسال الطلب في محاولة واحدة سريعة
+    // 2. إرسال الطلب مع تقييد max_tokens بـ 300 لمنع تجاوز الحصة
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -85,7 +68,8 @@ export default async function handler(req, res) {
           },
           { role: 'user', content: userMessage }
         ],
-        temperature: 0.6
+        temperature: 0.6,
+        max_tokens: 300
       })
     });
 
@@ -96,8 +80,6 @@ export default async function handler(req, res) {
     }
 
     let reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
-
-    // مسح وسم التفكير الإنجليزي بالكامل
     reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     return res.status(200).send(reply || 'تدلل عيني ✨');
@@ -105,4 +87,5 @@ export default async function handler(req, res) {
   } catch (error) {
     return res.status(500).send(`خطأ في الاتصال: ${error.message}`);
   }
+}
 }

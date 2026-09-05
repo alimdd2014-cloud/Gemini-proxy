@@ -25,8 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // الاتصال المباشر بنموذج gemini-2.0-flash
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${selectedKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${selectedKey}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -34,7 +33,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         systemInstruction: {
           parts: [{
-            text: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة، تردين بلهجة عراقية محبوبة وعفوية، إجاباتك قصيرة ومختصرة بدون مقدمات رسمية.'
+            text: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة، تردين بلهجة عراقية محبوبة وعفوية، إجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
           }]
         },
         contents: [{ role: 'user', parts: [{ text: userMessage }] }],
@@ -45,9 +44,7 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      // إرجاع نص الخطأ الدقيق من خوادم Google
-      const errorMsg = data.error?.message || JSON.stringify(data);
-      return res.status(response.status).send(`Google API Error [${response.status}]: ${errorMsg}`);
+      return res.status(response.status).send(`Google API Error [${response.status}]: ${data.error?.message || 'Unknown error'}`);
     }
 
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'تدلل عيني ✨';

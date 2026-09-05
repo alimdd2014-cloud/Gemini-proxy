@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const rawKeys = process.env.GEMINI_API_KEY || process.env.GROK_API_KEYS || '';
+  const rawKeys = process.env.GEMINI_API_KEY || '';
   const keys = rawKeys
     .split(',')
     .map(k => k.trim().replace(/^["']|["']$/g, ''))
@@ -24,36 +24,36 @@ export default async function handler(req, res) {
     return res.status(200).send('يا روحي رسالتك فارغة! 🙈');
   }
 
-  // تجربة النماذج الحديثة المتاحة بالترتيب لضمان الاستجابة
-  const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-latest'];
+  try {
+    // الاتصال المباشر بنموذج gemini-2.0-flash
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${selectedKey}`;
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${selectedKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة، تردين بلهجة عراقية محبوبة وعفوية، إجاباتك قصيرة ومختصرة بدون مقدمات رسمية.'
+          }]
+        },
+        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+        generationConfig: { maxOutputTokens: 250 }
+      })
+    });
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{
-              text: 'أنتِ سوسو، بنية عراقية مرحة ولطيفة كلش، تردين بلهجة عراقية محبوبة وعفوية، إجاباتج قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون أي مقدمات أو تكلف.'
-            }]
-          },
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: { maxOutputTokens: 250 }
-        })
-      });
+    const data = await response.json();
 
-      const data = await response.json();
-
-      if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        return res.status(200).send(data.candidates[0].content.parts[0].text.trim());
-      }
-    } catch (e) {
-      continue;
+    if (!response.ok) {
+      // إرجاع نص الخطأ الدقيق من خوادم Google
+      const errorMsg = data.error?.message || JSON.stringify(data);
+      return res.status(response.status).send(`Google API Error [${response.status}]: ${errorMsg}`);
     }
-  }
 
-  return res.status(500).send('تعذر الاتصال بنماذج Gemini، تأكد من صلاحية المفتاح.');
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'تدلل عيني ✨';
+    return res.status(200).send(reply.trim());
+
+  } catch (error) {
+    return res.status(500).send(`Network Error: ${error.message}`);
+  }
 }

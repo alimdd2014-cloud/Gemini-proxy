@@ -5,11 +5,11 @@ export default async function handler(req, res) {
   }
 
   // جلب المفاتيح وتقسيمها إذا كانت متعددة
-  const rawKeys = process.env.GROK_API_KEYS || process.env.XAI_API_KEY || '';
+  const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
   const keys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
 
   if (keys.length === 0) {
-    return res.status(500).send('لم يتم ضبط مفاتيح Grok في Vercel');
+    return res.status(500).send('لم يتم ضبط مفاتيح Groq في Vercel');
   }
 
   // اختيار مفتاح عشوائي لتوزيع الحمل
@@ -24,18 +24,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    // الاتصال بخوادم Groq الرسمية
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'grok-2-latest',
+        model: 'llama-3.3-70b-versatile',
         messages: [
           {
             role: 'system',
-            content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
+            content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون أي مقدمات أو علامات رسمية.'
           },
           { role: 'user', content: userMessage }
         ],
@@ -46,12 +47,12 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).send(`خطأ من Grok: ${data.error?.message || 'غير معروف'}`);
+      return res.status(response.status).send(`خطأ من Groq: ${data.error?.message || 'غير معروف'}`);
     }
 
     const reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
 
-    // إرجاع النص الصافي مباشرة
+    // إرجاع النص العربي الصافي
     return res.status(200).send(reply);
 
   } catch (error) {

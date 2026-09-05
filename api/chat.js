@@ -1,12 +1,10 @@
 export const maxDuration = 30;
 
 export default async function handler(req, res) {
-  // قبول طلبات POST فقط
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // جلب مفتاح Gemini من متغيرات البيئة
   const rawKeys = process.env.GEMINI_API_KEY || process.env.GROK_API_KEYS || '';
   const keys = rawKeys
     .split(',')
@@ -19,7 +17,6 @@ export default async function handler(req, res) {
 
   const selectedKey = keys[Math.floor(Math.random() * keys.length)];
 
-  // استخراج نص الرسالة بشكل آمن من أي صيغة مرسلة
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
   const userMessage = body.message || (body.query && body.query.message) || body.text || '';
 
@@ -28,7 +25,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${selectedKey}`;
+    // استخدام نموذج Gemini 3.6 Flash
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${selectedKey}`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -46,7 +44,6 @@ export default async function handler(req, res) {
           }
         ],
         generationConfig: {
-          temperature: 0.7,
           maxOutputTokens: 250
         }
       })

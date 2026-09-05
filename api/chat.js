@@ -24,33 +24,50 @@ export default async function handler(req, res) {
     return res.status(200).send('يا روحي رسالتك فارغة! 🙈');
   }
 
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${selectedKey}`;
+  // استخدام الإصدارات الحديثة المعتمدة فقط
+  const models = ['gemini-3.6-flash', 'gemini-3.6-flash-lite'];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{
-            text: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة، تردين بلهجة عراقية محبوبة وعفوية، إجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
-          }]
-        },
-        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-        generationConfig: { maxOutputTokens: 250 }
-      })
-    });
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${selectedKey}`;
 
-    const data = await response.json();
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{
+                text: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة، تردين بلهجة عراقية محبوبة وعفوية، إجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
+              }]
+            },
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            generationConfig: { maxOutputTokens: 250 }
+          })
+        });
 
-    if (!response.ok) {
-      return res.status(response.status).send(`Google API Error [${response.status}]: ${data.error?.message || 'Unknown error'}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'تدلل عيني ✨';
+          return res.status(200).send(reply.trim());
+        }
+
+        // في حال وجود ضغط (503)، ننتظر نصف ثانية ونحاول مرة أخرى أو ننتقل للنموذج التالي
+        if (response.status === 503) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+
+        return res.status(response.status).send(`Google API Error [${response.status}]: ${data.error?.message || 'Unknown error'}`);
+
+      } catch (error) {
+        if (model === models[models.length - 1] && attempt === 1) {
+          return res.status(500).send(`Network Error: ${error.message}`);
+        }
+      }
     }
-
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'تدلل عيني ✨';
-    return res.status(200).send(reply.trim());
-
-  } catch (error) {
-    return res.status(500).send(`Network Error: ${error.message}`);
   }
+
+  return res.status(503).send('الخوادم تشهد ضغطاً حالياً، ثواني وارجع أرد عليك عيني ✨');
 }

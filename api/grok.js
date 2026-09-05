@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. جلب قائمة النماذج المتاحة في حسابك
+    // 1. جلب قائمة النماذج المتاحة
     const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { 'Authorization': `Bearer ${selectedKey}` }
     });
@@ -48,25 +48,25 @@ export default async function handler(req, res) {
                !lower.includes('tts');
       });
 
-    // ترتيب النماذج لإعطاء الأولوية لنماذج المحادثة المعتمدة
+    // إعطاء الأولوية لنماذج المحادثة السريعة والمباشرة
     candidates.sort((a, b) => {
       const score = (name) => {
         const n = name.toLowerCase();
+        if (n.includes('llama-3.3')) return 12;
+        if (n.includes('llama-3.1')) return 11;
         if (n.includes('llama')) return 10;
-        if (n.includes('qwen')) return 8;
-        if (n.includes('deepseek')) return 7;
-        if (n.includes('gemma')) return 6;
-        if (n.includes('mixtral')) return 5;
+        if (n.includes('qwen')) return 9;
+        if (n.includes('deepseek')) return 8;
         return 1;
       };
       return score(b) - score(a);
     });
 
     if (candidates.length === 0) {
-      return res.status(400).send('لا توجد نماذج دردشة نشطة في حسابك');
+      return res.status(400).send('لا توجد نماذج دردشة نشطة');
     }
 
-    // 3. تجربة النماذج المؤهلة حتى ينجح أول نموذج فوراً
+    // 3. محاولة الإرسال للنموذج الأفضل
     let lastError = '';
     for (const targetModel of candidates.slice(0, 5)) {
       try {
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
             messages: [
               {
                 role: 'system',
-                content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون أي مقدمات أو تكلف.'
+                content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية عفوية ومحبوبة، إجاباتك سريعة ومختصرة تناسب محادثات الواتساب اليومية وبدون تكلف أو رسميات.'
               },
               { role: 'user', content: userMessage }
             ],
@@ -90,8 +90,12 @@ export default async function handler(req, res) {
         });
 
         const data = await response.json();
-        if (response.ok && data.choices?.[0]?.message?.content) {
-          return res.status(200).send(data.choices[0].message.content);
+        let reply = data.choices?.[0]?.message?.content;
+
+        if (response.ok && reply) {
+          // تنظيف الرد نهائياً وحذف التفكير الداخلي <think>...</think>
+          reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+          return res.status(200).send(reply || 'تدلل عيني ✨');
         } else {
           lastError = `${targetModel}: ${data.error?.message || response.statusText}`;
         }
@@ -100,9 +104,10 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(400).send(`فشلت محاولة النماذج المتاحة: ${lastError}`);
+    return res.status(400).send(`فشلت المحاولة: ${lastError}`);
 
   } catch (error) {
     return res.status(500).send(`خطأ في الاتصال: ${error.message}`);
   }
+}
 }

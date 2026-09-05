@@ -32,15 +32,16 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'qwen-3.6-27b',
+        // النموذج الفعال والناجح في حسابك
+        model: 'deepseek-r1-distill-llama-70b',
         messages: [
           {
             role: 'system',
-            content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة جداً لمحادثات الواتساب وبدون مقدمات رسمية.'
+            content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة جداً لمحادثات الواتساب وبدون أي مقدمات أو تكلف.'
           },
           { role: 'user', content: userMessage }
         ],
-        temperature: 0.7
+        temperature: 0.6
       })
     });
 
@@ -51,6 +52,8 @@ export default async function handler(req, res) {
     }
 
     let reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
+    
+    // إزالة التفكير الداخلي لضمان وصول الرد العربي الصافي فقط للواتساب
     reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     return res.status(200).send(reply || 'تدلل عيني ✨');

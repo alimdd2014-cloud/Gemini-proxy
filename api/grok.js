@@ -1,39 +1,98 @@
+export const maxDuration = 30;
+
 export default async function handler(req, res) {
-  // السماح بطلبات POST فقط
+  const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
+  const keys = rawKeys
+    .split(',')
+    .map(k => k.trim().replace(/^["']|["']$/g, ''))
+    .filter(Boolean);
+
+  if (keys.length === 0) {
+    return res.status(500).send('لم يتم ضبط مفاتيح Groq في Vercel');
+  }
+
+  const selectedKey = keys[Math.floor(Math.random() * keys.length)];
+
+  // فحص النماذج بفتح رابط البروكسي مباشرة في المتصفح
+  if (req.method === 'GET') {
+    try {
+      const mRes = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { 'Authorization': `Bearer ${selectedKey}` }
+      });
+      const mData = await mRes.json();
+      return res.status(200).json({ active_models: (mData.data || []).map(m => m.id) });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  const userMessage = body.message || (body.query && body.query.message) || body.text || '';
+
+  if (!userMessage) {
+    return res.status(200).send('يا روحي رسالتك فارغة! 🙈');
+  }
+
   try {
-    const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
-    const keys = rawKeys
-      .split(',')
-      .map(k => k.trim().replace(/^["']|["']$/g, ''))
-      .filter(Boolean);
+    // 1. جلب النماذج الفعلية من حسابك
+    const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': `Bearer ${selectedKey}` }
+    });
+    const modelsData = await modelsRes.json();
 
-    if (keys.length === 0) {
-      return res.status(500).send('لم يتم ضبط مفاتيح Groq في Vercel');
+    if (!modelsRes.ok || !modelsData.data) {
+      return res.status(400).send(`فشل فحص المفتاح: ${modelsData.error?.message || 'تأكد من صلاحية المفتاح'}`);
     }
 
-    const selectedKey = keys[Math.floor(Math.random() * keys.length)];
+    const allIds = modelsData.data.map(m => m.id);
 
-    // استخراج نص الرسالة بأمان
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const userMessage = body.message || (body.query && body.query.message) || body.text || '';
+    // 2. استبعاد النماذج الموقوفة والصوتية والتجريبية المقيدة
+    const validModels = allIds.filter(id => {
+      const l = id.toLowerCase();
+      return !l.includes('whisper') &&
+             !l.includes('guard') &&
+             !l.includes('vision') &&
+             !l.includes('orpheus') &&
+             !l.includes('canopylabs') &&
+             !l.includes('embed') &&
+             !l.includes('tts') &&
+             !l.includes('mixtral') &&
+             !l.includes('distill'); // استبعاد عائلة distill المتوقفة
+    });
 
-    if (!userMessage) {
-      return res.status(200).send('يا روحي رسالتك فارغة! 🙈');
+    // ترتيب الأفضلية لنماذج المحادثة المعتمدة
+    validModels.sort((a, b) => {
+      const score = (name) => {
+        const n = name.toLowerCase();
+        if (n.includes('llama-3.3')) return 10;
+        if (n.includes('llama-3.1')) return 9;
+        if (n.includes('llama-3')) return 8;
+        if (n.includes('qwen')) return 7;
+        if (n.includes('gemma')) return 6;
+        return 1;
+      };
+      return score(b) - score(a);
+    });
+
+    const targetModel = validModels[0];
+
+    if (!targetModel) {
+      return res.status(400).send(`النماذج المتوفرة في حسابك: ${allIds.join(', ')}`);
     }
 
-    // إرسال الطلب مباشرة إلى النموذج الفعّال في حسابك مع تحديد max_tokens
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    // 3. إرسال الرسالة للنموذج المختار مع تقييد الرموز لمنع خطأ OTPM
+    const chatRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-r1-distill-qwen-32b',
+        model: targetModel,
         messages: [
           {
             role: 'system',
@@ -41,21 +100,18 @@ export default async function handler(req, res) {
           },
           { role: 'user', content: userMessage }
         ],
-        temperature: 0.6,
+        temperature: 0.7,
         max_tokens: 250
       })
     });
 
-    const data = await response.json();
+    const chatData = await chatRes.json();
 
-    if (!response.ok) {
-      const errMsg = data.error?.message || response.statusText;
-      return res.status(response.status).send(`خطأ من Groq: ${errMsg}`);
+    if (!chatRes.ok) {
+      return res.status(chatRes.status).send(`خطأ (${targetModel}): ${chatData.error?.message}. القائمة: ${allIds.slice(0, 6).join(', ')}`);
     }
 
-    let reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
-
-    // تنظيف شامل لأي وسوم تفكير داخلية حتى لو لم تُغلق
+    let reply = chatData.choices?.[0]?.message?.content || 'تدلل عيني ✨';
     reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
     reply = reply.replace(/<think>[\s\S]*/gi, '');
     reply = reply.trim();
@@ -63,6 +119,6 @@ export default async function handler(req, res) {
     return res.status(200).send(reply || 'تدلل عيني ✨');
 
   } catch (error) {
-    return res.status(500).send(`خطأ داخلي: ${error.message}`);
+    return res.status(500).send(`خطأ في السيرفر: ${error.message}`);
   }
 }

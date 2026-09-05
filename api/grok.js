@@ -3,7 +3,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // سحب وتنظيف المفاتيح من أي فراغات أو علامات تنصيص
+  // قراءة وتنظيف المفاتيح تلقائياً
   const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
   const keys = rawKeys
     .split(',')
@@ -14,7 +14,6 @@ export default async function handler(req, res) {
     return res.status(500).send('لم يتم ضبط مفاتيح Groq في Vercel');
   }
 
-  // اختيار مفتاح عشوائي في حال وجود أكثر من مفتاح
   const selectedKey = keys[Math.floor(Math.random() * keys.length)];
 
   const body = req.body || {};
@@ -32,11 +31,11 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'gpt-oss-120b',
         messages: [
           {
             role: 'system',
-            content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
+            content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون أي مقدمات أو تكلف.'
           },
           { role: 'user', content: userMessage }
         ],

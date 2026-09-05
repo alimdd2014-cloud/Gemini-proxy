@@ -1,5 +1,3 @@
-export const maxDuration = 30;
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -24,51 +22,40 @@ export default async function handler(req, res) {
     return res.status(200).send('يا روحي رسالتك فارغة! 🙈');
   }
 
-  // قائمة النماذج المعتمدة والسريعة في Groq للتجربة المباشرة بدون تايم أوت
-  const modelsToTry = [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    'gemma2-9b-it',
-    'mixtral-8x7b-32768'
-  ];
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${selectedKey}`
+      },
+      body: JSON.stringify({
+        model: 'deepseek-r1-distill-llama-70b',
+        messages: [
+          {
+            role: 'system',
+            content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
+          },
+          { role: 'user', content: userMessage }
+        ],
+        temperature: 0.6
+      })
+    });
 
-  let lastError = '';
+    const data = await response.json();
 
-  for (const model of modelsToTry) {
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${selectedKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة جداً لمحادثات الواتساب وبدون مقدمات رسمية.'
-            },
-            { role: 'user', content: userMessage }
-          ],
-          temperature: 0.7
-        })
-      });
-
-      const data = await response.json();
-      let reply = data.choices?.[0]?.message?.content;
-
-      if (response.ok && reply) {
-        // حذف أي وسوم تفكير داخلية إن وجدت
-        reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-        return res.status(200).send(reply || 'تدلل عيني ✨');
-      } else {
-        lastError = data.error?.message || response.statusText;
-      }
-    } catch (err) {
-      lastError = err.message;
+    if (!response.ok) {
+      return res.status(response.status).send(`خطأ من Groq: ${data.error?.message || 'غير معروف'}`);
     }
-  }
 
-  return res.status(500).send(`خطأ من Groq: ${lastError}`);
+    let reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
+
+    // مسح وسم التفكير الإنجليزي بالكامل وإبقاء الرد الصافي فقط
+    reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+    return res.status(200).send(reply || 'تدلل عيني ✨');
+
+  } catch (error) {
+    return res.status(500).send(`خطأ في الاتصال: ${error.message}`);
+  }
 }

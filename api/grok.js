@@ -1,8 +1,5 @@
 export const maxDuration = 30;
 
-// يمكنك كتابة أي اسم نموذج معتمد في حسابك هنا مباشرة
-const MODEL_NAME = 'qwen-2.5-32b';
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -35,11 +32,11 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: MODEL_NAME,
+        model: 'qwen-3.6-27b',
         messages: [
           {
             role: 'system',
-            content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة جداً لمحادثات الواتساب اليومية وبدون مقدمات رسمية.'
+            content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة جداً لمحادثات الواتساب وبدون مقدمات رسمية.'
           },
           { role: 'user', content: userMessage }
         ],
@@ -50,12 +47,10 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).send(`خطأ من Groq (${MODEL_NAME}): ${data.error?.message || 'تأكد من اسم النموذج'}`);
+      return res.status(response.status).send(`خطأ من Groq: ${data.error?.message || 'غير معروف'}`);
     }
 
     let reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
-
-    // تنظيف أي وسوم تفكير داخلية
     reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     return res.status(200).send(reply || 'تدلل عيني ✨');

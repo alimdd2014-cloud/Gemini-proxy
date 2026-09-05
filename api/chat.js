@@ -24,41 +24,36 @@ export default async function handler(req, res) {
     return res.status(200).send('يا روحي رسالتك فارغة! 🙈');
   }
 
-  try {
-    // استخدام نموذج Gemini 3.6 Flash
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${selectedKey}`;
+  // تجربة النماذج الحديثة المتاحة بالترتيب لضمان الاستجابة
+  const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-latest'];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{
-            text: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، إجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون أي مقدمات أو تكلف.'
-          }]
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: userMessage }]
-          }
-        ],
-        generationConfig: {
-          maxOutputTokens: 250
-        }
-      })
-    });
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${selectedKey}`;
 
-    const data = await response.json();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{
+              text: 'أنتِ سوسو، بنية عراقية مرحة ولطيفة كلش، تردين بلهجة عراقية محبوبة وعفوية، إجاباتج قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون أي مقدمات أو تكلف.'
+            }]
+          },
+          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+          generationConfig: { maxOutputTokens: 250 }
+        })
+      });
 
-    if (!response.ok) {
-      return res.status(response.status).send(`خطأ من Gemini: ${data.error?.message || 'غير معروف'}`);
+      const data = await response.json();
+
+      if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        return res.status(200).send(data.candidates[0].content.parts[0].text.trim());
+      }
+    } catch (e) {
+      continue;
     }
-
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'تدلل عيني ✨';
-    return res.status(200).send(reply.trim());
-
-  } catch (error) {
-    return res.status(500).send(`خطأ في الاتصال: ${error.message}`);
   }
+
+  return res.status(500).send('تعذر الاتصال بنماذج Gemini، تأكد من صلاحية المفتاح.');
 }

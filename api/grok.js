@@ -20,6 +20,26 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 1. جلب النماذج المتاحة فعلياً لمفتاحك من Groq مباشرة
+    const modelsResponse = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': `Bearer ${selectedKey}` }
+    });
+    const modelsJson = await modelsResponse.json();
+
+    if (!modelsResponse.ok || !modelsJson.data) {
+      return res.status(400).send(`فشل جلب النماذج: ${JSON.stringify(modelsJson)}`);
+    }
+
+    const modelIds = modelsJson.data.map(m => m.id);
+
+    // 2. اختيار النموذج الأفضل المتوفر في حسابك تلقائياً
+    const targetModel = modelIds.find(id => id.includes('llama-3') || id.includes('llama') || id.includes('gemma') || id.includes('mixtral')) || modelIds[0];
+
+    if (!targetModel) {
+      return res.status(400).send(`لا توجد نماذج دردشة مفعلة في حسابك.`);
+    }
+
+    // 3. إرسال السؤال إلى النموذج المختار
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -27,7 +47,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: targetModel,
         messages: [
           {
             role: 'system',
@@ -42,11 +62,10 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).send(`خطأ من Groq: ${data.error?.message || 'غير معروف'}`);
+      return res.status(response.status).send(`خطأ من Groq (${targetModel}): ${data.error?.message || 'غير معروف'}`);
     }
 
     const reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
-
     return res.status(200).send(reply);
 
   } catch (error) {

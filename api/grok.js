@@ -1,9 +1,7 @@
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+// رفع الحد الأقصى لوقت الاستجابة في Vercel لمنع خطأ 500
+export const maxDuration = 30;
 
-  // قراءة وتنظيف المفاتيح
+export default async function handler(req, res) {
   const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
   const keys = rawKeys
     .split(',')
@@ -16,6 +14,23 @@ export default async function handler(req, res) {
 
   const selectedKey = keys[Math.floor(Math.random() * keys.length)];
 
+  // إمكانية فحص النماذج بفتح الرابط مباشرة من المتصفح (GET)
+  if (req.method === 'GET') {
+    try {
+      const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { 'Authorization': `Bearer ${selectedKey}` }
+      });
+      const data = await modelsRes.json();
+      return res.status(200).json(data);
+    } catch (e) {
+      return res.status(500).send(e.message);
+    }
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   const body = req.body || {};
   const userMessage = body.message || (body.query && body.query.message) || body.text || '';
 
@@ -24,90 +39,73 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. جلب قائمة النماذج المتاحة
+    // 1. جلب النماذج المتاحة في حسابك
     const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
       headers: { 'Authorization': `Bearer ${selectedKey}` }
     });
     const modelsData = await modelsRes.json();
 
     if (!modelsRes.ok || !modelsData.data) {
-      return res.status(400).send(`خطأ في قراءة المفتاح: ${modelsData.error?.message || 'غير صالح'}`);
+      return res.status(400).send(`خطأ في المفتاح: ${modelsData.error?.message || 'تأكد من المفتاح'}`);
     }
 
-    // 2. تصفية النماذج واستبعاد المقيدة ونماذج الصوت
-    let candidates = modelsData.data
+    // 2. استبعاد نماذج الصوت والتجارب الخارجية المقيدة
+    const validModels = modelsData.data
       .map(m => m.id)
       .filter(id => {
-        const lower = id.toLowerCase();
-        return !lower.includes('whisper') &&
-               !lower.includes('guard') &&
-               !lower.includes('embed') &&
-               !lower.includes('vision') &&
-               !lower.includes('canopylabs') &&
-               !lower.includes('orpheus') &&
-               !lower.includes('tts');
+        const n = id.toLowerCase();
+        return !n.includes('whisper') &&
+               !n.includes('guard') &&
+               !n.includes('embed') &&
+               !n.includes('vision') &&
+               !n.includes('orpheus') &&
+               !n.includes('canopylabs') &&
+               !n.includes('tts') &&
+               !n.includes('specdec');
       });
 
-    // إعطاء الأولوية لنماذج المحادثة السريعة والمباشرة
-    candidates.sort((a, b) => {
-      const score = (name) => {
-        const n = name.toLowerCase();
-        if (n.includes('llama-3.3')) return 12;
-        if (n.includes('llama-3.1')) return 11;
-        if (n.includes('llama')) return 10;
-        if (n.includes('qwen')) return 9;
-        if (n.includes('deepseek')) return 8;
-        return 1;
-      };
-      return score(b) - score(a);
+    // اختيار أفضل نموذج محادثة نصي نشط فوراً
+    const chosenModel = validModels.find(id => id.includes('llama') || id.includes('qwen') || id.includes('gemma') || id.includes('deepseek')) || validModels[0];
+
+    if (!chosenModel) {
+      return res.status(400).send('لم يتم العثور على نموذج نصي صالح في الحساب');
+    }
+
+    // 3. إرسال الطلب للنموذج المختار مباشرة
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${selectedKey}`
+      },
+      body: JSON.stringify({
+        model: chosenModel,
+        messages: [
+          {
+            role: 'system',
+            content: 'أنتِ سوسو، فتاة عراقية لطيفة ومرحة، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة جداً لمحادثات الواتساب وبدون مقدمات رسمية.'
+          },
+          { role: 'user', content: userMessage }
+        ],
+        temperature: 0.7
+      })
     });
 
-    if (candidates.length === 0) {
-      return res.status(400).send('لا توجد نماذج دردشة نشطة');
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).send(`خطأ من Groq (${chosenModel}): ${data.error?.message || 'غير معروف'}`);
     }
 
-    // 3. محاولة الإرسال للنموذج الأفضل
-    let lastError = '';
-    for (const targetModel of candidates.slice(0, 5)) {
-      try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${selectedKey}`
-          },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية عفوية ومحبوبة، إجاباتك سريعة ومختصرة تناسب محادثات الواتساب اليومية وبدون تكلف أو رسميات.'
-              },
-              { role: 'user', content: userMessage }
-            ],
-            temperature: 0.7
-          })
-        });
+    let reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
 
-        const data = await response.json();
-        let reply = data.choices?.[0]?.message?.content;
+    // حذف أي نصوص تفكير داخلية مثل <think>...</think>
+    reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-        if (response.ok && reply) {
-          // تنظيف الرد نهائياً وحذف التفكير الداخلي <think>...</think>
-          reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-          return res.status(200).send(reply || 'تدلل عيني ✨');
-        } else {
-          lastError = `${targetModel}: ${data.error?.message || response.statusText}`;
-        }
-      } catch (err) {
-        lastError = `${targetModel}: ${err.message}`;
-      }
-    }
-
-    return res.status(400).send(`فشلت المحاولة: ${lastError}`);
+    return res.status(200).send(reply || 'تدلل عيني ✨');
 
   } catch (error) {
-    return res.status(500).send(`خطأ في الاتصال: ${error.message}`);
+    return res.status(500).send(`خطأ في السيرفر: ${error.message}`);
   }
 }
-}
+

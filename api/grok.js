@@ -1,10 +1,8 @@
 export default async function handler(req, res) {
-  // السماح بطلبات POST فقط
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // جلب المفاتيح وتقسيمها إذا كانت متعددة
   const rawKeys = process.env.GROK_API_KEYS || process.env.GROQ_API_KEY || '';
   const keys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
 
@@ -12,10 +10,8 @@ export default async function handler(req, res) {
     return res.status(500).send('لم يتم ضبط مفاتيح Groq في Vercel');
   }
 
-  // اختيار مفتاح عشوائي لتوزيع الحمل
   const selectedKey = keys[Math.floor(Math.random() * keys.length)];
 
-  // استخراج الرسالة من جسم الطلب
   const body = req.body || {};
   const userMessage = body.message || (body.query && body.query.message) || body.text || '';
 
@@ -24,7 +20,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // الاتصال بخوادم Groq الرسمية
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -32,7 +27,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         messages: [
           {
             role: 'system',
@@ -52,7 +47,6 @@ export default async function handler(req, res) {
 
     const reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
 
-    // إرجاع النص العربي الصافي
     return res.status(200).send(reply);
 
   } catch (error) {

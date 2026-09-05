@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     return res.status(500).send('لم يتم ضبط مفاتيح Grok في Vercel');
   }
 
-  // اختيار مفتاح عشوائي لتوزيع الاستهلاك
+  // اختيار مفتاح عشوائي لتوزيع الحمل
   const selectedKey = keys[Math.floor(Math.random() * keys.length)];
 
   // استخراج الرسالة من جسم الطلب
@@ -31,11 +31,11 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${selectedKey}`
       },
       body: JSON.stringify({
-        model: 'grok-beta',
+        model: 'grok-2-latest',
         messages: [
           {
             role: 'system',
-            content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية.'
+            content: 'أنتِ سوسو، فتاة عراقية مرحة ولطيفة جداً، تردين بلهجة عراقية محبوبة وعفوية، وإجاباتك قصيرة ومختصرة تناسب محادثات الواتساب اليومية وبدون مقدمات رسمية.'
           },
           { role: 'user', content: userMessage }
         ],
@@ -50,12 +50,11 @@ export default async function handler(req, res) {
     }
 
     const reply = data.choices?.[0]?.message?.content || 'تدلل عيني ✨';
-    
-    // إرجاع النص العربي الصافي مباشرة
+
+    // إرجاع النص الصافي مباشرة
     return res.status(200).send(reply);
 
   } catch (error) {
     return res.status(500).send(`خطأ في الاتصال: ${error.message}`);
   }
 }
-
